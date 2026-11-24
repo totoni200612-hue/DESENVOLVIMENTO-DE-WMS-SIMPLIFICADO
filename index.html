@@ -1,0 +1,3124 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WMS Simplificado — Gestão de Armazém</title>
+    <meta
+      name="description"
+      content="Protótipo acadêmico de Sistema de Gestão de Armazém (WMS) com mapa visual de 150 posições porta-paletes, recebimento (putaway), saída (picking), busca por SKU e persistência em localStorage."
+    />
+    <meta property="og:title" content="WMS Simplificado — Gestão de Armazém" />
+    <meta
+      property="og:description"
+      content="Protótipo acadêmico de Sistema de Gestão de Armazém (WMS) com mapa visual de 150 posições porta-paletes, recebimento (putaway), saída (picking), busca por SKU e persistência em localStorage."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="author" content="Tayná" />
+
+    <!-- ===================================================================
+         ESTILOS DA APLICAÇÃO (CSS EMBUTIDO PARA FUNCIONAMENTO AUTÔNOMO)
+         =================================================================== -->
+    <style>
+      /* Variáveis globais de design: paleta neutra industrial 60-30-10 */
+      :root {
+        --bg-canvas: #f8fafc;
+        --bg-surface: #ffffff;
+        --bg-subtle: #f1f5f9;
+        --border-hairline: #e2e8f0;
+        --border-strong: #cbd5e1;
+
+        --text-primary: #0f172a;
+        --text-secondary: #475569;
+        --text-muted: #64748b;
+
+        --accent-primary: #1d4ed8;
+        --accent-primary-hover: #1e40af;
+        --accent-soft: #eff6ff;
+
+        /* Cores semânticas para os três estados das posições */
+        --status-free-bg: #f0fdf4;
+        --status-free-border: #86efac;
+        --status-free-text: #166534;
+
+        --status-occupied-bg: #eff6ff;
+        --status-occupied-border: #93c5fd;
+        --status-occupied-text: #1e40af;
+
+        --status-blocked-bg: #fef2f2;
+        --status-blocked-border: #fca5a5;
+        --status-blocked-text: #991b1b;
+
+        --danger-bg: #dc2626;
+        --danger-hover: #b91c1c;
+
+        --font-sans: "Plus Jakarta Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+        --font-mono: "JetBrains Mono", "Cascadia Mono", "SFMono-Regular", ui-monospace, monospace;
+
+        --radius-sm: 6px;
+        --radius-md: 8px;
+        --radius-lg: 12px;
+        --transition-fast: 160ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      /* Reset básico e acessibilidade */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+        *,
+        *::before,
+        *::after {
+          transition-duration: 0.01ms !important;
+          animation-duration: 0.01ms !important;
+        }
+      }
+
+      body {
+        margin: 0;
+        font-family: var(--font-sans);
+        font-size: 15px;
+        line-height: 1.5;
+        color: var(--text-primary);
+        background-color: var(--bg-canvas);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* Anel de foco visível para navegação por teclado */
+      :focus-visible {
+        outline: 2px solid var(--accent-primary);
+        outline-offset: 2px;
+      }
+
+      .tabular {
+        font-variant-numeric: tabular-nums;
+      }
+
+      .mono {
+        font-family: var(--font-mono);
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* -------------------------------------------------------------------
+         BARRA SUPERIOR (CONTRATO DE 3 ZONAS)
+         ------------------------------------------------------------------- */
+      .topbar {
+        background-color: var(--bg-surface);
+        border-bottom: 1px solid var(--border-hairline);
+        position: sticky;
+        top: 0;
+        z-index: 30;
+      }
+
+      .topbar-inner {
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 14px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 32px;
+      }
+
+      .brand-title {
+        font-size: 1.125rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--text-primary);
+        text-decoration: none;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .topbar-nav {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+      }
+
+      .topbar-nav a {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        text-decoration: none;
+        white-space: nowrap;
+        flex-shrink: 0;
+        padding: 4px 0;
+        border-bottom: 2px solid transparent;
+        transition: color var(--transition-fast), border-color var(--transition-fast);
+      }
+
+      .topbar-nav a:hover {
+        color: var(--text-primary);
+        border-bottom-color: var(--border-strong);
+      }
+
+      .topbar-action {
+        flex-shrink: 0;
+      }
+
+      /* -------------------------------------------------------------------
+         BOTÕES E CONTROLES INTERATIVOS
+         ------------------------------------------------------------------- */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 40px;
+        padding: 8px 16px;
+        font-family: inherit;
+        font-size: 0.875rem;
+        font-weight: 600;
+        border-radius: var(--radius-md);
+        border: 1px solid transparent;
+        cursor: pointer;
+        white-space: nowrap;
+        flex-shrink: 0;
+        transition: background-color var(--transition-fast), border-color var(--transition-fast),
+          color var(--transition-fast), transform var(--transition-fast);
+      }
+
+      .btn:active:not(:disabled) {
+        transform: translateY(1px);
+      }
+
+      .btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      .btn-primary {
+        background-color: var(--accent-primary);
+        color: #ffffff;
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        background-color: var(--accent-primary-hover);
+      }
+
+      .btn-secondary {
+        background-color: var(--bg-surface);
+        color: var(--text-primary);
+        border-color: var(--border-strong);
+      }
+
+      .btn-secondary:hover:not(:disabled) {
+        background-color: var(--bg-subtle);
+      }
+
+      .btn-danger-outline {
+        background-color: var(--bg-surface);
+        color: var(--status-blocked-text);
+        border-color: var(--status-blocked-border);
+      }
+
+      .btn-danger-outline:hover:not(:disabled) {
+        background-color: var(--status-blocked-bg);
+      }
+
+      .btn-danger {
+        background-color: var(--danger-bg);
+        color: #ffffff;
+      }
+
+      .btn-danger:hover:not(:disabled) {
+        background-color: var(--danger-hover);
+      }
+
+      .btn-sm {
+        min-height: 36px;
+        padding: 6px 12px;
+        font-size: 0.8125rem;
+      }
+
+      /* -------------------------------------------------------------------
+         CONTAINER PRINCIPAL E CABEÇALHO DE CONTEXTO
+         ------------------------------------------------------------------- */
+      .container {
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .page-intro {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      .page-intro h1 {
+        margin: 0 0 4px 0;
+        font-size: clamp(1.375rem, 2.2vw, 1.75rem);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--text-primary);
+        text-wrap: balance;
+      }
+
+      .page-subtitle {
+        margin: 0;
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+      }
+
+      .capacity-meta {
+        font-size: 0.8125rem;
+        color: var(--text-muted);
+      }
+
+      /* -------------------------------------------------------------------
+         PAINEL DE INDICADORES (DASHBOARD KPI)
+         ------------------------------------------------------------------- */
+      .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+
+      .kpi-card {
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-hairline);
+        border-radius: var(--radius-lg);
+        padding: 18px 20px;
+      }
+
+      .kpi-label {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+      }
+
+      .kpi-value-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .kpi-value {
+        font-size: 1.875rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+        color: var(--text-primary);
+      }
+
+      .kpi-value.free {
+        color: var(--status-free-text);
+      }
+
+      .kpi-value.occupied {
+        color: var(--status-occupied-text);
+      }
+
+      .kpi-value.blocked {
+        color: var(--status-blocked-text);
+      }
+
+      .kpi-detail {
+        margin-top: 6px;
+        font-size: 0.8125rem;
+        color: var(--text-muted);
+      }
+
+      .occupancy-bar-track {
+        margin-top: 10px;
+        height: 6px;
+        width: 100%;
+        background-color: var(--bg-subtle);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+
+      .occupancy-bar-fill {
+        height: 100%;
+        width: 0%;
+        background-color: var(--accent-primary);
+        transition: width 220ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      /* -------------------------------------------------------------------
+         BANNER DE FEEDBACK DE OPERAÇÕES (SUCESSO / ERRO / AVISO)
+         ------------------------------------------------------------------- */
+      .feedback-region {
+        margin-bottom: 20px;
+      }
+
+      .feedback-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 12px 16px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-hairline);
+        font-size: 0.875rem;
+        font-weight: 500;
+      }
+
+      .feedback-banner[hidden] {
+        display: none;
+      }
+
+      .feedback-banner.success {
+        background-color: var(--status-free-bg);
+        border-color: var(--status-free-border);
+        color: var(--status-free-text);
+      }
+
+      .feedback-banner.error {
+        background-color: var(--status-blocked-bg);
+        border-color: var(--status-blocked-border);
+        color: var(--status-blocked-text);
+      }
+
+      .feedback-banner.info {
+        background-color: var(--status-occupied-bg);
+        border-color: var(--status-occupied-border);
+        color: var(--status-occupied-text);
+      }
+
+      .feedback-close {
+        background: transparent;
+        border: none;
+        color: inherit;
+        font-size: 1.125rem;
+        line-height: 1;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: var(--radius-sm);
+      }
+
+      /* -------------------------------------------------------------------
+         GRADE PRINCIPAL DE TRABALHO (OPERAÇÕES À ESQUERDA + MAPA À DIREITA)
+         ------------------------------------------------------------------- */
+      .workspace-grid {
+        display: grid;
+        grid-template-columns: 400px minmax(0, 1fr);
+        gap: 24px;
+        align-items: start;
+      }
+
+      .panel {
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-hairline);
+        border-radius: var(--radius-lg);
+        padding: 20px;
+      }
+
+      .panel + .panel {
+        margin-top: 20px;
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--border-hairline);
+      }
+
+      .panel-title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
+
+      /* -------------------------------------------------------------------
+         ABAS DE OPERAÇÃO (RECEBIMENTO / SAÍDA / BUSCA)
+         ------------------------------------------------------------------- */
+      .tabs-bar {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 4px;
+        padding: 4px;
+        background-color: var(--bg-subtle);
+        border-radius: var(--radius-md);
+        margin-bottom: 18px;
+      }
+
+      .tab-btn {
+        min-height: 38px;
+        padding: 6px 6px;
+        border: none;
+        background: transparent;
+        border-radius: var(--radius-sm);
+        font-family: inherit;
+        font-size: 0.78125rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background-color var(--transition-fast), color var(--transition-fast);
+      }
+
+      .tab-btn:hover {
+        color: var(--text-primary);
+      }
+
+      .tab-btn[aria-selected="true"] {
+        background-color: var(--bg-surface);
+        color: var(--text-primary);
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+      }
+
+      .tab-panel[hidden] {
+        display: none;
+      }
+
+      /* -------------------------------------------------------------------
+         FORMULÁRIOS
+         ------------------------------------------------------------------- */
+      .form-group {
+        margin-bottom: 14px;
+      }
+
+      .form-label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .form-input,
+      .form-select {
+        width: 100%;
+        min-height: 40px;
+        padding: 8px 12px;
+        font-family: inherit;
+        font-size: 0.875rem;
+        color: var(--text-primary);
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-md);
+        transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+      }
+
+      .form-input:focus,
+      .form-select:focus {
+        outline: none;
+        border-color: var(--accent-primary);
+        box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.14);
+      }
+
+      .form-hint {
+        margin-top: 5px;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+      }
+
+      .form-actions {
+        margin-top: 18px;
+        display: flex;
+        gap: 10px;
+      }
+
+      .form-actions .btn {
+        flex: 1;
+      }
+
+      /* -------------------------------------------------------------------
+         CARTÃO DA POSIÇÃO SELECIONADA
+         ------------------------------------------------------------------- */
+      .inspector-empty {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        margin: 0;
+      }
+
+      .inspector-address {
+        font-family: var(--font-mono);
+        font-size: 0.9375rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin: 0 0 8px 0;
+      }
+
+      .inspector-meta {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        margin-bottom: 12px;
+      }
+
+      .inspector-details {
+        border-top: 1px solid var(--border-hairline);
+        padding-top: 12px;
+        margin-bottom: 14px;
+        display: grid;
+        gap: 6px;
+        font-size: 0.875rem;
+      }
+
+      .inspector-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .inspector-row-label {
+        color: var(--text-muted);
+      }
+
+      .inspector-row-val {
+        font-weight: 600;
+        color: var(--text-primary);
+        text-align: right;
+      }
+
+      .inspector-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .inspector-actions .btn {
+        flex: 1;
+      }
+
+      /* -------------------------------------------------------------------
+         CONSULTA E RESULTADOS DE BUSCA
+         ------------------------------------------------------------------- */
+      .search-results {
+        margin-top: 16px;
+        display: grid;
+        gap: 10px;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .search-result-item {
+        padding: 12px;
+        border: 1px solid var(--border-hairline);
+        border-radius: var(--radius-md);
+        background-color: var(--bg-canvas);
+      }
+
+      .search-result-top {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+
+      .search-result-sku {
+        font-family: var(--font-mono);
+        font-size: 0.8125rem;
+        font-weight: 700;
+        color: var(--accent-primary);
+      }
+
+      .search-result-qty {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .search-result-name {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 6px;
+      }
+
+      .search-result-loc {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        margin-bottom: 10px;
+      }
+
+      .search-result-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        cursor: pointer;
+      }
+
+      .checkbox-row input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--accent-primary);
+        cursor: pointer;
+      }
+
+      .catalog-section-title {
+        margin: 20px 0 10px 0;
+        padding-top: 16px;
+        border-top: 1px solid var(--border-hairline);
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .catalog-list {
+        display: grid;
+        gap: 10px;
+        max-height: 340px;
+        overflow-y: auto;
+      }
+
+      .inline-edit-form {
+        border-top: 1px solid var(--border-hairline);
+        padding-top: 12px;
+        margin-top: 8px;
+      }
+
+      .empty-state {
+        padding: 16px;
+        text-align: center;
+        border: 1px dashed var(--border-strong);
+        border-radius: var(--radius-md);
+        font-size: 0.875rem;
+        color: var(--text-muted);
+      }
+
+      /* -------------------------------------------------------------------
+         MAPA VISUAL DO ARMAZÉM (6 RUAS x 5 MÓDULOS x 5 NÍVEIS)
+         ------------------------------------------------------------------- */
+      .map-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .legend-list {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 16px;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .legend-swatch {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        border: 1px solid transparent;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: 700;
+      }
+
+      .legend-swatch.free {
+        background-color: var(--status-free-bg);
+        border-color: var(--status-free-border);
+        color: var(--status-free-text);
+      }
+
+      .legend-swatch.occupied {
+        background-color: var(--status-occupied-bg);
+        border-color: var(--status-occupied-border);
+        color: var(--status-occupied-text);
+      }
+
+      .legend-swatch.blocked {
+        background-color: var(--status-blocked-bg);
+        border-color: var(--status-blocked-border);
+        color: var(--status-blocked-text);
+        background-image: repeating-linear-gradient(
+          -45deg,
+          transparent,
+          transparent 3px,
+          rgba(153, 27, 27, 0.1) 3px,
+          rgba(153, 27, 27, 0.1) 6px
+        );
+      }
+
+      .filter-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      .aisle-filter-group {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 4px;
+        background-color: var(--bg-subtle);
+        border-radius: var(--radius-md);
+      }
+
+      .filter-btn {
+        min-height: 32px;
+        padding: 4px 10px;
+        border: none;
+        background: transparent;
+        border-radius: var(--radius-sm);
+        font-family: inherit;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background-color var(--transition-fast), color var(--transition-fast);
+      }
+
+      .filter-btn[aria-pressed="true"] {
+        background-color: var(--bg-surface);
+        color: var(--text-primary);
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+      }
+
+      /* Grade de Ruas: 2 ruas por linha no desktop para ótima legibilidade */
+      .aisles-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .aisle-card {
+        border: 1px solid var(--border-hairline);
+        border-radius: var(--radius-md);
+        background-color: var(--bg-canvas);
+        padding: 14px;
+      }
+
+      .aisle-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .aisle-name {
+        font-family: var(--font-mono);
+        font-size: 0.9375rem;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
+
+      .aisle-summary {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+      }
+
+      /* Corredor visual com 5 módulos porta-paletes */
+      .rack-scroll {
+        overflow-x: auto;
+        padding-bottom: 4px;
+      }
+
+      .modules-grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(64px, 1fr));
+        gap: 6px;
+        min-width: 340px;
+      }
+
+      .module-col {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .module-title {
+        text-align: center;
+        font-family: var(--font-mono);
+        font-size: 0.6875rem;
+        font-weight: 700;
+        color: var(--text-secondary);
+        padding: 4px 2px;
+        background-color: var(--bg-subtle);
+        border-radius: 4px;
+      }
+
+      /* Botão de Posição de Palete (célula interativa) */
+      .slot-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: space-between;
+        width: 100%;
+        min-height: 44px;
+        padding: 5px 6px;
+        border-radius: var(--radius-sm);
+        border: 1px solid transparent;
+        font-family: inherit;
+        text-align: left;
+        cursor: pointer;
+        transition: transform var(--transition-fast), box-shadow var(--transition-fast),
+          border-color var(--transition-fast);
+      }
+
+      .slot-btn:hover {
+        transform: translateY(-1px);
+      }
+
+      .slot-btn.is-selected {
+        box-shadow: 0 0 0 2px var(--text-primary);
+        border-color: var(--text-primary) !important;
+      }
+
+      .slot-btn.is-search-hit {
+        box-shadow: 0 0 0 2px var(--accent-primary);
+      }
+
+      .slot-btn.is-dimmed {
+        opacity: 0.3;
+      }
+
+      .slot-btn.status-livre {
+        background-color: var(--status-free-bg);
+        border-color: var(--status-free-border);
+        color: var(--status-free-text);
+      }
+
+      .slot-btn.status-ocupado {
+        background-color: var(--status-occupied-bg);
+        border-color: var(--status-occupied-border);
+        color: var(--status-occupied-text);
+      }
+
+      .slot-btn.status-indisponivel {
+        background-color: var(--status-blocked-bg);
+        border-color: var(--status-blocked-border);
+        color: var(--status-blocked-text);
+        background-image: repeating-linear-gradient(
+          -45deg,
+          transparent,
+          transparent 4px,
+          rgba(153, 27, 27, 0.08) 4px,
+          rgba(153, 27, 27, 0.08) 8px
+        );
+      }
+
+      .slot-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        font-family: var(--font-mono);
+        font-size: 0.625rem;
+        font-weight: 700;
+        opacity: 0.9;
+      }
+
+      .slot-bottom {
+        width: 100%;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .rack-floor-label {
+        margin-top: 6px;
+        padding-top: 4px;
+        border-top: 2px solid var(--border-strong);
+        text-align: center;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        color: var(--text-muted);
+      }
+
+      /* -------------------------------------------------------------------
+         MODAL DE CONFIRMAÇÃO (SEM WINDOW.CONFIRM / WINDOW.ALERT)
+         ------------------------------------------------------------------- */
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background-color: rgba(15, 23, 42, 0.48);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        z-index: 50;
+      }
+
+      .modal-backdrop[hidden] {
+        display: none;
+      }
+
+      .modal-dialog {
+        width: 100%;
+        max-width: 440px;
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-hairline);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.16);
+      }
+
+      .modal-title {
+        margin: 0 0 8px 0;
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
+
+      .modal-desc {
+        margin: 0 0 20px 0;
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+
+      /* -------------------------------------------------------------------
+         RODAPÉ SIMPLES
+         ------------------------------------------------------------------- */
+      .app-footer {
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 12px 24px 32px;
+        font-size: 0.8125rem;
+        color: var(--text-muted);
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      /* -------------------------------------------------------------------
+         RESPONSIVIDADE (TABLET E CELULAR)
+         ------------------------------------------------------------------- */
+      @media (max-width: 1180px) {
+        .workspace-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 900px) {
+        .kpi-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .aisles-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .topbar-inner {
+          padding: 12px 16px;
+          gap: 12px;
+        }
+        .topbar-nav {
+          display: none;
+        }
+        .container {
+          padding: 16px;
+        }
+        .kpi-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- ===================================================================
+         CABEÇALHO SUPERIOR (3 ZONAS: MARCA, NAVEGAÇÃO, AÇÃO DE RESTAURAÇÃO)
+         =================================================================== -->
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a href="#indicadores" class="brand-title">WMS Porta-Paletes</a>
+
+        <nav class="topbar-nav" aria-label="Navegação principal">
+          <a href="#indicadores">Indicadores</a>
+          <a href="#operacoes">Operações</a>
+          <a href="#mapa-armazem">Mapa do Armazém</a>
+          <a href="#inspecao">Posição Selecionada</a>
+        </nav>
+
+        <div class="topbar-action">
+          <button type="button" id="btn-abrir-reset" class="btn btn-danger-outline btn-sm">
+            Restaurar Armazém Vazio
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <!-- Introdução contextual do armazém -->
+      <section class="page-intro">
+        <div>
+          <h1>Controle de Estoque e Endereçamento</h1>
+          <p class="page-subtitle">
+            Gestão visual de recebimento (putaway), saída (picking) e alocação vertical de paletes.
+          </p>
+        </div>
+        <div class="capacity-meta tabular">
+          Responsável: Tayná · 6 Ruas (RUA-A a RUA-F) · 30 Módulos · 5 Níveis · 150 Posições
+        </div>
+      </section>
+
+      <!-- ===================================================================
+           PAINEL DE INDICADORES (DASHBOARD EM TEMPO REAL)
+           =================================================================== -->
+      <section id="indicadores" class="kpi-grid" aria-label="Indicadores do armazém">
+        <article class="kpi-card">
+          <div class="kpi-label">Taxa de Ocupação</div>
+          <div class="kpi-value-row">
+            <span id="kpi-ocupacao" class="kpi-value tabular">0,0%</span>
+          </div>
+          <div class="occupancy-bar-track" aria-hidden="true">
+            <div id="kpi-ocupacao-barra" class="occupancy-bar-fill"></div>
+          </div>
+          <div id="kpi-ocupacao-detalhe" class="kpi-detail tabular">0 de 150 posições ocupadas</div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-label">Posições Livres</div>
+          <div class="kpi-value-row">
+            <span id="kpi-livres" class="kpi-value free tabular">150</span>
+          </div>
+          <div class="kpi-detail">Disponíveis para recebimento</div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-label">Posições Ocupadas</div>
+          <div class="kpi-value-row">
+            <span id="kpi-ocupadas" class="kpi-value occupied tabular">0</span>
+          </div>
+          <div class="kpi-detail">Com mercadoria alocada</div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-label">Posições Indisponíveis</div>
+          <div class="kpi-value-row">
+            <span id="kpi-indisponiveis" class="kpi-value blocked tabular">0</span>
+          </div>
+          <div class="kpi-detail">Bloqueadas ou em manutenção</div>
+        </article>
+      </section>
+
+      <!-- Região de mensagens de retorno (sucesso / erro / informação) -->
+      <div class="feedback-region" aria-live="polite">
+        <div id="feedback-banner" class="feedback-banner" role="status" hidden>
+          <span id="feedback-mensagem"></span>
+          <button
+            type="button"
+            id="feedback-fechar"
+            class="feedback-close"
+            aria-label="Fechar mensagem"
+          >
+            &times;
+          </button>
+        </div>
+      </div>
+
+      <!-- ===================================================================
+           ÁREA DE TRABALHO: PAINEL DE OPERAÇÕES + MAPA VISUAL DE 150 POSIÇÕES
+           =================================================================== -->
+      <div class="workspace-grid">
+        <!-- COLUNA ESQUERDA: OPERAÇÕES (PUTAWAY, PICKING, CONSULTA) + INSPETOR -->
+        <aside>
+          <section id="operacoes" class="panel" aria-label="Operações logísticas">
+            <div class="panel-header">
+              <h2 class="panel-title">Operações Logísticas</h2>
+            </div>
+
+            <!-- Navegação por abas -->
+            <div class="tabs-bar" role="tablist" aria-label="Tipo de operação">
+              <button
+                type="button"
+                class="tab-btn"
+                role="tab"
+                id="tab-putaway"
+                aria-controls="painel-putaway"
+                aria-selected="true"
+                data-tab="putaway"
+              >
+                Entrada
+              </button>
+              <button
+                type="button"
+                class="tab-btn"
+                role="tab"
+                id="tab-produtos"
+                aria-controls="painel-produtos"
+                aria-selected="false"
+                data-tab="produtos"
+              >
+                Produtos
+              </button>
+              <button
+                type="button"
+                class="tab-btn"
+                role="tab"
+                id="tab-picking"
+                aria-controls="painel-picking"
+                aria-selected="false"
+                data-tab="picking"
+              >
+                Saída
+              </button>
+              <button
+                type="button"
+                class="tab-btn"
+                role="tab"
+                id="tab-busca"
+                aria-controls="painel-busca"
+                aria-selected="false"
+                data-tab="busca"
+              >
+                Buscar
+              </button>
+            </div>
+
+            <!-- ABA 1: ENTRADA DE MERCADORIAS (PUTAWAY) -->
+            <div id="painel-putaway" class="tab-panel" role="tabpanel" aria-labelledby="tab-putaway">
+              <form id="form-putaway" novalidate>
+                <div class="form-group">
+                  <label class="form-label" for="select-produto-salvo">
+                    Produto salvo no catálogo (opcional)
+                  </label>
+                  <select id="select-produto-salvo" class="form-select">
+                    <option value="">Preencher manualmente ou escolher salvo</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="input-sku">Código / SKU</label>
+                  <input
+                    type="text"
+                    id="input-sku"
+                    class="form-input mono"
+                    placeholder="Ex: SKU-1042"
+                    autocomplete="off"
+                    required
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="input-produto">Nome do produto</label>
+                  <input
+                    type="text"
+                    id="input-produto"
+                    class="form-input"
+                    placeholder="Ex: Caixa de Papelão Reforçada"
+                    autocomplete="off"
+                    required
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="input-quantidade">Quantidade</label>
+                  <input
+                    type="number"
+                    id="input-quantidade"
+                    class="form-input tabular"
+                    placeholder="Ex: 24"
+                    min="1"
+                    step="1"
+                    required
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="select-destino">Endereço de destino (livres)</label>
+                  <select id="select-destino" class="form-select mono" required></select>
+                  <div class="form-hint">
+                    Selecione aqui ou clique diretamente em uma posição livre no mapa.
+                  </div>
+                </div>
+
+                <label class="checkbox-row" for="chk-salvar-catalogo">
+                  <input type="checkbox" id="chk-salvar-catalogo" checked />
+                  <span>Salvar produto no catálogo para reutilizar ou editar depois</span>
+                </label>
+
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary">Registrar Entrada</button>
+                </div>
+              </form>
+            </div>
+
+            <!-- ABA 2: CADASTRO E EDIÇÃO DE PRODUTOS SALVOS -->
+            <div
+              id="painel-produtos"
+              class="tab-panel"
+              role="tabpanel"
+              aria-labelledby="tab-produtos"
+              hidden
+            >
+              <form id="form-produto-catalogo" novalidate>
+                <div class="form-group">
+                  <label class="form-label" for="cat-input-sku">Código / SKU</label>
+                  <input
+                    type="text"
+                    id="cat-input-sku"
+                    class="form-input mono"
+                    placeholder="Ex: SKU-1042"
+                    autocomplete="off"
+                    required
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="cat-input-nome">Nome do produto</label>
+                  <input
+                    type="text"
+                    id="cat-input-nome"
+                    class="form-input"
+                    placeholder="Ex: Caixa de Papelão Reforçada"
+                    autocomplete="off"
+                    required
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="cat-input-unidade">
+                    Unidade / Observação (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    id="cat-input-unidade"
+                    class="form-input"
+                    placeholder="Ex: CX, UN, Palete padrão"
+                    autocomplete="off"
+                  />
+                </div>
+
+                <div class="form-actions">
+                  <button type="submit" id="btn-salvar-produto" class="btn btn-primary">
+                    Salvar Produto
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-cancelar-edicao-produto"
+                    class="btn btn-secondary"
+                    hidden
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+
+              <div class="catalog-section-title">
+                <span>Produtos Salvos</span>
+                <span id="catalogo-contador" class="capacity-meta tabular">0 itens</span>
+              </div>
+              <div id="lista-produtos-salvos" class="catalog-list"></div>
+            </div>
+
+            <!-- ABA 3: SAÍDA DE MERCADORIAS (PICKING) -->
+            <div
+              id="painel-picking"
+              class="tab-panel"
+              role="tabpanel"
+              aria-labelledby="tab-picking"
+              hidden
+            >
+              <form id="form-picking" novalidate>
+                <div class="form-group">
+                  <label class="form-label" for="select-picking">Endereço para retirada</label>
+                  <select id="select-picking" class="form-select mono" required></select>
+                  <div class="form-hint">
+                    Escolha uma posição ocupada para liberar o endereço no mapa.
+                  </div>
+                </div>
+
+                <div id="picking-preview" class="empty-state">
+                  Selecione um endereço para visualizar os dados da carga antes da baixa.
+                </div>
+
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary">Confirmar Saída (Picking)</button>
+                </div>
+              </form>
+            </div>
+
+            <!-- ABA 4: CONSULTA E BUSCA POR SKU OU PRODUTO -->
+            <div
+              id="painel-busca"
+              class="tab-panel"
+              role="tabpanel"
+              aria-labelledby="tab-busca"
+              hidden
+            >
+              <form id="form-busca" novalidate>
+                <div class="form-group">
+                  <label class="form-label" for="input-busca">Buscar por SKU ou nome do produto</label>
+                  <input
+                    type="search"
+                    id="input-busca"
+                    class="form-input"
+                    placeholder="Ex: SKU-1042 ou Papelão"
+                    autocomplete="off"
+                  />
+                  <div class="form-hint">
+                    Lista todas as ruas, módulos e níveis onde o item está armazenado.
+                  </div>
+                </div>
+              </form>
+
+              <div id="resultados-busca" class="search-results"></div>
+            </div>
+          </section>
+
+          <!-- PAINEL INSPETOR DA POSIÇÃO SELECIONADA NO MAPA -->
+          <section id="inspecao" class="panel" aria-label="Detalhes da posição selecionada">
+            <div class="panel-header">
+              <h2 class="panel-title">Posição Selecionada</h2>
+            </div>
+            <div id="inspector-conteudo">
+              <p class="inspector-empty">
+                Clique em qualquer célula do mapa do armazém para ver os detalhes e alterar o status
+                entre Livre e Indisponível.
+              </p>
+            </div>
+          </section>
+        </aside>
+
+        <!-- COLUNA DIREITA: MAPA VISUAL DO ARMAZÉM (150 POSIÇÕES) -->
+        <section id="mapa-armazem" class="panel" aria-label="Mapa visual do armazém">
+          <div class="panel-header">
+            <h2 class="panel-title">Mapa Visual do Armazém</h2>
+            <span id="mapa-contador-visivel" class="capacity-meta tabular">
+              Exibindo 150 de 150 posições
+            </span>
+          </div>
+
+          <div class="map-toolbar">
+            <!-- Legenda com cor + rótulo textual explícito -->
+            <div class="legend-list" aria-label="Legenda de status">
+              <span class="legend-item">
+                <span class="legend-swatch free" aria-hidden="true">L</span>
+                Livre
+              </span>
+              <span class="legend-item">
+                <span class="legend-swatch occupied" aria-hidden="true">O</span>
+                Ocupado
+              </span>
+              <span class="legend-item">
+                <span class="legend-swatch blocked" aria-hidden="true">X</span>
+                Indisponível
+              </span>
+            </div>
+          </div>
+
+          <!-- Filtros rápidos por Rua e Status -->
+          <div class="filter-controls">
+            <div class="aisle-filter-group" role="group" aria-label="Filtrar por rua">
+              <button type="button" class="filter-btn" data-filter-rua="TODAS" aria-pressed="true">
+                Todas as Ruas
+              </button>
+              <button type="button" class="filter-btn" data-filter-rua="RUA-A" aria-pressed="false">
+                RUA-A
+              </button>
+              <button type="button" class="filter-btn" data-filter-rua="RUA-B" aria-pressed="false">
+                RUA-B
+              </button>
+              <button type="button" class="filter-btn" data-filter-rua="RUA-C" aria-pressed="false">
+                RUA-C
+              </button>
+              <button type="button" class="filter-btn" data-filter-rua="RUA-D" aria-pressed="false">
+                RUA-D
+              </button>
+              <button type="button" class="filter-btn" data-filter-rua="RUA-E" aria-pressed="false">
+                RUA-E
+              </button>
+              <button type="button" class="filter-btn" data-filter-rua="RUA-F" aria-pressed="false">
+                RUA-F
+              </button>
+            </div>
+
+            <div class="aisle-filter-group" role="group" aria-label="Destacar por status">
+              <button type="button" class="filter-btn" data-filter-status="TODOS" aria-pressed="true">
+                Todos Status
+              </button>
+              <button type="button" class="filter-btn" data-filter-status="livre" aria-pressed="false">
+                Livres
+              </button>
+              <button type="button" class="filter-btn" data-filter-status="ocupado" aria-pressed="false">
+                Ocupados
+              </button>
+              <button
+                type="button"
+                class="filter-btn"
+                data-filter-status="indisponivel"
+                aria-pressed="false"
+              >
+                Indisponíveis
+              </button>
+            </div>
+          </div>
+
+          <!-- Grade das 6 Ruas (cada rua contém 5 módulos × 5 níveis) -->
+          <div id="grade-ruas" class="aisles-grid"></div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="app-footer">
+      <span>Protótipo WMS · Responsável: Tayná · Disciplina de Programação da Produção</span>
+      <span>Persistência automática local ativada (localStorage)</span>
+    </footer>
+
+    <!-- ===================================================================
+         MODAL DE CONFIRMAÇÃO PARA RESTAURAR O ARMAZÉM VAZIO
+         =================================================================== -->
+    <div
+      id="modal-reset"
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-reset-titulo"
+      hidden
+    >
+      <div class="modal-dialog">
+        <h3 id="modal-reset-titulo" class="modal-title">Restaurar armazém vazio?</h3>
+        <p class="modal-desc">
+          Esta ação removerá todas as mercadorias alocadas, limpará os bloqueios e definirá todas as
+          150 posições (RUA-A a RUA-F) como Livres. Os produtos salvos no catálogo serão mantidos.
+        </p>
+        <div class="modal-actions">
+          <button type="button" id="btn-cancelar-reset" class="btn btn-secondary">Cancelar</button>
+          <button type="button" id="btn-confirmar-reset" class="btn btn-danger">
+            Confirmar Restauração
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================
+         LÓGICA DA APLICAÇÃO (JAVASCRIPT PURO SEM DEPENDÊNCIAS EXTERNAS)
+         =================================================================== -->
+    <script>
+      (function () {
+        "use strict";
+
+        /* -----------------------------------------------------------------
+           1. CONSTANTES DA ESTRUTURA FÍSICA DO ARMAZÉM
+           ----------------------------------------------------------------- */
+        var STORAGE_KEY = "wms_academico_estado_v1";
+        var CATALOG_STORAGE_KEY = "wms_academico_produtos_v1";
+        var RUAS = ["RUA-A", "RUA-B", "RUA-C", "RUA-D", "RUA-E", "RUA-F"];
+        var MODULOS = ["MOD-01", "MOD-02", "MOD-03", "MOD-04", "MOD-05"];
+        /* Ordem visual de renderização: topo (NIVEL-5) até o piso (NIVEL-1) */
+        var NIVEIS_VISUAIS = ["NIVEL-5", "NIVEL-4", "NIVEL-3", "NIVEL-2", "NIVEL-1"];
+        /* Ordem lógica crescente para seletores de endereço */
+        var NIVEIS_ORDENADOS = ["NIVEL-1", "NIVEL-2", "NIVEL-3", "NIVEL-4", "NIVEL-5"];
+
+        var STATUS_ROTULO = {
+          livre: "Livre",
+          ocupado: "Ocupado",
+          indisponivel: "Indisponível",
+        };
+
+        /* -----------------------------------------------------------------
+           2. ESTADO EM MEMÓRIA E ELEMENTOS DO DOM
+           ----------------------------------------------------------------- */
+        var estado = {
+          posicoes: [],
+          produtos: [],
+          mapaPorEndereco: {},
+          posicaoSelecionada: null,
+          editandoPosicao: false,
+          produtoEmEdicaoId: null,
+          abaAtiva: "putaway",
+          filtroRua: "TODAS",
+          filtroStatus: "TODOS",
+          termoBusca: "",
+          resultadosBuscaEnderecos: new Set(),
+        };
+
+        var el = {
+          kpiOcupacao: document.getElementById("kpi-ocupacao"),
+          kpiOcupacaoBarra: document.getElementById("kpi-ocupacao-barra"),
+          kpiOcupacaoDetalhe: document.getElementById("kpi-ocupacao-detalhe"),
+          kpiLivres: document.getElementById("kpi-livres"),
+          kpiOcupadas: document.getElementById("kpi-ocupadas"),
+          kpiIndisponiveis: document.getElementById("kpi-indisponiveis"),
+
+          feedbackBanner: document.getElementById("feedback-banner"),
+          feedbackMensagem: document.getElementById("feedback-mensagem"),
+          feedbackFechar: document.getElementById("feedback-fechar"),
+
+          tabBtns: document.querySelectorAll(".tab-btn"),
+          tabPanels: {
+            putaway: document.getElementById("painel-putaway"),
+            produtos: document.getElementById("painel-produtos"),
+            picking: document.getElementById("painel-picking"),
+            busca: document.getElementById("painel-busca"),
+          },
+
+          formPutaway: document.getElementById("form-putaway"),
+          selectProdutoSalvo: document.getElementById("select-produto-salvo"),
+          inputSku: document.getElementById("input-sku"),
+          inputProduto: document.getElementById("input-produto"),
+          inputQuantidade: document.getElementById("input-quantidade"),
+          selectDestino: document.getElementById("select-destino"),
+          chkSalvarCatalogo: document.getElementById("chk-salvar-catalogo"),
+
+          formProdutoCatalogo: document.getElementById("form-produto-catalogo"),
+          catInputSku: document.getElementById("cat-input-sku"),
+          catInputNome: document.getElementById("cat-input-nome"),
+          catInputUnidade: document.getElementById("cat-input-unidade"),
+          btnSalvarProduto: document.getElementById("btn-salvar-produto"),
+          btnCancelarEdicaoProduto: document.getElementById("btn-cancelar-edicao-produto"),
+          catalogoContador: document.getElementById("catalogo-contador"),
+          listaProdutosSalvos: document.getElementById("lista-produtos-salvos"),
+
+          formPicking: document.getElementById("form-picking"),
+          selectPicking: document.getElementById("select-picking"),
+          pickingPreview: document.getElementById("picking-preview"),
+
+          formBusca: document.getElementById("form-busca"),
+          inputBusca: document.getElementById("input-busca"),
+          resultadosBusca: document.getElementById("resultados-busca"),
+
+          inspectorConteudo: document.getElementById("inspector-conteudo"),
+          gradeRuas: document.getElementById("grade-ruas"),
+          mapaContadorVisivel: document.getElementById("mapa-contador-visivel"),
+
+          botoesFiltroRua: document.querySelectorAll("[data-filter-rua]"),
+          botoesFiltroStatus: document.querySelectorAll("[data-filter-status]"),
+
+          btnAbrirReset: document.getElementById("btn-abrir-reset"),
+          modalReset: document.getElementById("modal-reset"),
+          btnCancelarReset: document.getElementById("btn-cancelar-reset"),
+          btnConfirmarReset: document.getElementById("btn-confirmar-reset"),
+        };
+
+        /* -----------------------------------------------------------------
+           3. CRIAÇÃO E PERSISTÊNCIA DO ESTADO (LOCALSTORAGE)
+           ----------------------------------------------------------------- */
+        function formatarEndereco(rua, modulo, nivel) {
+          return rua + " / " + modulo + " / " + nivel;
+        }
+
+        function gerarPosicoesVazias() {
+          var lista = [];
+          RUAS.forEach(function (rua) {
+            MODULOS.forEach(function (modulo) {
+              NIVEIS_ORDENADOS.forEach(function (nivel) {
+                lista.push({
+                  endereco: formatarEndereco(rua, modulo, nivel),
+                  rua: rua,
+                  modulo: modulo,
+                  nivel: nivel,
+                  status: "livre",
+                  sku: "",
+                  produto: "",
+                  quantidade: 0,
+                  atualizadoEm: "",
+                });
+              });
+            });
+          });
+          return lista;
+        }
+
+        function reconstruirIndice() {
+          var mapa = {};
+          estado.posicoes.forEach(function (pos) {
+            mapa[pos.endereco] = pos;
+          });
+          estado.mapaPorEndereco = mapa;
+        }
+
+        function salvarNoLocalStorage() {
+          try {
+            var payload = JSON.stringify({
+              versao: 1,
+              posicoes: estado.posicoes,
+            });
+            window.localStorage.setItem(STORAGE_KEY, payload);
+          } catch (erro) {
+            /* Caso o navegador bloqueie o armazenamento local, a operação continua em memória */
+          }
+        }
+
+        function carregarDoLocalStorage() {
+          try {
+            var bruto = window.localStorage.getItem(STORAGE_KEY);
+            if (!bruto) {
+              estado.posicoes = gerarPosicoesVazias();
+              reconstruirIndice();
+              salvarNoLocalStorage();
+              return;
+            }
+
+            var parsed = JSON.parse(bruto);
+            if (
+              !parsed ||
+              !Array.isArray(parsed.posicoes) ||
+              parsed.posicoes.length !== 150
+            ) {
+              estado.posicoes = gerarPosicoesVazias();
+              reconstruirIndice();
+              salvarNoLocalStorage();
+              return;
+            }
+
+            /* Valida cada registro recuperado para evitar inconsistências */
+            var base = gerarPosicoesVazias();
+            var mapaSalvo = {};
+            parsed.posicoes.forEach(function (item) {
+              if (item && item.endereco) {
+                mapaSalvo[item.endereco] = item;
+              }
+            });
+
+            estado.posicoes = base.map(function (padrao) {
+              var salvo = mapaSalvo[padrao.endereco];
+              if (!salvo) return padrao;
+
+              var statusValido =
+                salvo.status === "livre" ||
+                salvo.status === "ocupado" ||
+                salvo.status === "indisponivel"
+                  ? salvo.status
+                  : "livre";
+
+              if (statusValido === "ocupado") {
+                return {
+                  endereco: padrao.endereco,
+                  rua: padrao.rua,
+                  modulo: padrao.modulo,
+                  nivel: padrao.nivel,
+                  status: "ocupado",
+                  sku: String(salvo.sku || ""),
+                  produto: String(salvo.produto || ""),
+                  quantidade: Number(salvo.quantidade) > 0 ? Number(salvo.quantidade) : 1,
+                  atualizadoEm: String(salvo.atualizadoEm || ""),
+                };
+              }
+
+              return {
+                endereco: padrao.endereco,
+                rua: padrao.rua,
+                modulo: padrao.modulo,
+                nivel: padrao.nivel,
+                status: statusValido,
+                sku: "",
+                produto: "",
+                quantidade: 0,
+                atualizadoEm: String(salvo.atualizadoEm || ""),
+              };
+            });
+
+            reconstruirIndice();
+          } catch (erro) {
+            estado.posicoes = gerarPosicoesVazias();
+            reconstruirIndice();
+          }
+        }
+
+        function salvarProdutosNoLocalStorage() {
+          try {
+            window.localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(estado.produtos));
+          } catch (erro) {
+            /* Ignora erro caso armazenamento local esteja restrito */
+          }
+        }
+
+        function carregarProdutosDoLocalStorage() {
+          try {
+            var bruto = window.localStorage.getItem(CATALOG_STORAGE_KEY);
+            if (!bruto) {
+              estado.produtos = [];
+              return;
+            }
+            var parsed = JSON.parse(bruto);
+            if (!Array.isArray(parsed)) {
+              estado.produtos = [];
+              return;
+            }
+            estado.produtos = parsed
+              .filter(function (item) {
+                return item && item.sku && item.nome;
+              })
+              .map(function (item) {
+                return {
+                  id: String(item.id || "prod-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6)),
+                  sku: String(item.sku),
+                  nome: String(item.nome),
+                  unidade: String(item.unidade || ""),
+                  atualizadoEm: String(item.atualizadoEm || ""),
+                };
+              });
+          } catch (erro) {
+            estado.produtos = [];
+          }
+        }
+
+        /* -----------------------------------------------------------------
+           4. MENSAGENS DE FEEDBACK E SEGURANÇA CONTRA INJEÇÃO HTML
+           ----------------------------------------------------------------- */
+        function exibirFeedback(tipo, mensagem) {
+          el.feedbackBanner.className = "feedback-banner " + tipo;
+          el.feedbackMensagem.textContent = mensagem;
+          el.feedbackBanner.hidden = false;
+        }
+
+        function ocultarFeedback() {
+          el.feedbackBanner.hidden = true;
+        }
+
+        function formatarDataHoraAgora() {
+          var agora = new Date();
+          return agora.toLocaleString("pt-BR", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+        }
+
+        /* -----------------------------------------------------------------
+           5. REGRAS DE NEGÓCIO DO WMS (PUTAWAY, PICKING, BLOQUEIO E RESET)
+           ----------------------------------------------------------------- */
+        function registrarEntrada(skuBruto, produtoBruto, quantidadeBruta, endereco) {
+          var sku = String(skuBruto || "").trim();
+          var produto = String(produtoBruto || "").trim();
+          var quantidade = Number(quantidadeBruta);
+
+          if (!sku) {
+            exibirFeedback("error", "Informe o Código / SKU do produto antes de registrar.");
+            el.inputSku.focus();
+            return false;
+          }
+
+          if (!produto) {
+            exibirFeedback("error", "Informe o Nome do produto antes de registrar.");
+            el.inputProduto.focus();
+            return false;
+          }
+
+          if (!Number.isFinite(quantidade) || quantidade <= 0 || !Number.isInteger(quantidade)) {
+            exibirFeedback(
+              "error",
+              "Informe uma Quantidade inteira e positiva (maior que zero)."
+            );
+            el.inputQuantidade.focus();
+            return false;
+          }
+
+          if (!endereco) {
+            exibirFeedback(
+              "error",
+              "Não há endereço livre selecionado. Libere uma posição ou escolha outra vaga."
+            );
+            el.selectDestino.focus();
+            return false;
+          }
+
+          var posicao = estado.mapaPorEndereco[endereco];
+          if (!posicao) {
+            exibirFeedback("error", "Endereço inválido: " + endereco + ".");
+            return false;
+          }
+
+          if (posicao.status === "ocupado") {
+            exibirFeedback(
+              "error",
+              "Operação bloqueada: a posição " +
+                endereco +
+                " já está ocupada pelo SKU " +
+                posicao.sku +
+                "."
+            );
+            return false;
+          }
+
+          if (posicao.status === "indisponivel") {
+            exibirFeedback(
+              "error",
+              "Operação bloqueada: a posição " +
+                endereco +
+                " está marcada como Indisponível."
+            );
+            return false;
+          }
+
+          posicao.status = "ocupado";
+          posicao.sku = sku;
+          posicao.produto = produto;
+          posicao.quantidade = quantidade;
+          posicao.atualizadoEm = formatarDataHoraAgora();
+
+          if (el.chkSalvarCatalogo && el.chkSalvarCatalogo.checked) {
+            registrarOuAtualizarProdutoSilencioso(sku, produto);
+          }
+
+          estado.posicaoSelecionada = endereco;
+          estado.editandoPosicao = false;
+          salvarNoLocalStorage();
+          atualizarInterfaceCompleta();
+
+          exibirFeedback(
+            "success",
+            "Entrada registrada: " +
+              quantidade +
+              " un. de " +
+              sku +
+              " (" +
+              produto +
+              ") alocadas em " +
+              endereco +
+              "."
+          );
+          return true;
+        }
+
+        function registrarOuAtualizarProdutoSilencioso(sku, nome) {
+          var existente = estado.produtos.find(function (p) {
+            return p.sku.toLowerCase() === sku.toLowerCase();
+          });
+          if (existente) {
+            existente.nome = nome;
+            existente.atualizadoEm = formatarDataHoraAgora();
+          } else {
+            estado.produtos.unshift({
+              id: "prod-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
+              sku: sku,
+              nome: nome,
+              unidade: "",
+              atualizadoEm: formatarDataHoraAgora(),
+            });
+          }
+          salvarProdutosNoLocalStorage();
+        }
+
+        function salvarProdutoCatalogo(skuBruto, nomeBruto, unidadeBruta) {
+          var sku = String(skuBruto || "").trim();
+          var nome = String(nomeBruto || "").trim();
+          var unidade = String(unidadeBruta || "").trim();
+
+          if (!sku) {
+            exibirFeedback("error", "Informe o Código / SKU do produto.");
+            el.catInputSku.focus();
+            return false;
+          }
+
+          if (!nome) {
+            exibirFeedback("error", "Informe o Nome do produto.");
+            el.catInputNome.focus();
+            return false;
+          }
+
+          var duplicado = estado.produtos.find(function (p) {
+            return (
+              p.sku.toLowerCase() === sku.toLowerCase() &&
+              p.id !== estado.produtoEmEdicaoId
+            );
+          });
+          if (duplicado) {
+            exibirFeedback(
+              "error",
+              "Já existe outro produto cadastrado com o SKU " + duplicado.sku + "."
+            );
+            el.catInputSku.focus();
+            return false;
+          }
+
+          if (estado.produtoEmEdicaoId) {
+            var alvo = estado.produtos.find(function (p) {
+              return p.id === estado.produtoEmEdicaoId;
+            });
+            if (!alvo) {
+              estado.produtoEmEdicaoId = null;
+              return false;
+            }
+            var skuAnterior = alvo.sku;
+            alvo.sku = sku;
+            alvo.nome = nome;
+            alvo.unidade = unidade;
+            alvo.atualizadoEm = formatarDataHoraAgora();
+
+            /* Atualiza também posições já ocupadas que utilizavam esse SKU */
+            estado.posicoes.forEach(function (pos) {
+              if (pos.status === "ocupado" && pos.sku.toLowerCase() === skuAnterior.toLowerCase()) {
+                pos.sku = sku;
+                pos.produto = nome;
+                pos.atualizadoEm = alvo.atualizadoEm;
+              }
+            });
+
+            estado.produtoEmEdicaoId = null;
+            salvarProdutosNoLocalStorage();
+            salvarNoLocalStorage();
+            atualizarInterfaceCompleta();
+            exibirFeedback("success", "Produto " + sku + " (" + nome + ") atualizado com sucesso.");
+            return true;
+          }
+
+          estado.produtos.unshift({
+            id: "prod-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
+            sku: sku,
+            nome: nome,
+            unidade: unidade,
+            atualizadoEm: formatarDataHoraAgora(),
+          });
+
+          salvarProdutosNoLocalStorage();
+          atualizarInterfaceCompleta();
+          exibirFeedback("success", "Produto " + sku + " (" + nome + ") salvo no catálogo.");
+          return true;
+        }
+
+        function excluirProdutoCatalogo(id) {
+          var alvo = estado.produtos.find(function (p) {
+            return p.id === id;
+          });
+          if (!alvo) return;
+
+          estado.produtos = estado.produtos.filter(function (p) {
+            return p.id !== id;
+          });
+
+          if (estado.produtoEmEdicaoId === id) {
+            cancelarEdicaoProdutoCatalogo();
+          }
+
+          salvarProdutosNoLocalStorage();
+          atualizarInterfaceCompleta();
+          exibirFeedback("info", "Produto " + alvo.sku + " removido do catálogo.");
+        }
+
+        function iniciarEdicaoProdutoCatalogo(id) {
+          var alvo = estado.produtos.find(function (p) {
+            return p.id === id;
+          });
+          if (!alvo) return;
+
+          estado.produtoEmEdicaoId = alvo.id;
+          el.catInputSku.value = alvo.sku;
+          el.catInputNome.value = alvo.nome;
+          el.catInputUnidade.value = alvo.unidade || "";
+          el.btnSalvarProduto.textContent = "Salvar Alterações";
+          el.btnCancelarEdicaoProduto.hidden = false;
+          el.catInputNome.focus();
+        }
+
+        function cancelarEdicaoProdutoCatalogo() {
+          estado.produtoEmEdicaoId = null;
+          el.formProdutoCatalogo.reset();
+          el.btnSalvarProduto.textContent = "Salvar Produto";
+          el.btnCancelarEdicaoProduto.hidden = true;
+        }
+
+        function editarPosicaoOcupada(endereco, skuBruto, produtoBruto, quantidadeBruta) {
+          var posicao = estado.mapaPorEndereco[endereco];
+          if (!posicao || posicao.status !== "ocupado") {
+            exibirFeedback("error", "Apenas posições ocupadas podem ter a carga editada.");
+            return false;
+          }
+
+          var sku = String(skuBruto || "").trim();
+          var produto = String(produtoBruto || "").trim();
+          var quantidade = Number(quantidadeBruta);
+
+          if (!sku) {
+            exibirFeedback("error", "Informe o Código / SKU do produto.");
+            return false;
+          }
+
+          if (!produto) {
+            exibirFeedback("error", "Informe o Nome do produto.");
+            return false;
+          }
+
+          if (!Number.isFinite(quantidade) || quantidade <= 0 || !Number.isInteger(quantidade)) {
+            exibirFeedback(
+              "error",
+              "Informe uma Quantidade inteira e positiva (maior que zero)."
+            );
+            return false;
+          }
+
+          posicao.sku = sku;
+          posicao.produto = produto;
+          posicao.quantidade = quantidade;
+          posicao.atualizadoEm = formatarDataHoraAgora();
+
+          registrarOuAtualizarProdutoSilencioso(sku, produto);
+          estado.editandoPosicao = false;
+          salvarNoLocalStorage();
+          atualizarInterfaceCompleta();
+
+          exibirFeedback(
+            "success",
+            "Posição " + endereco + " atualizada: " + quantidade + " un. de " + sku + " (" + produto + ")."
+          );
+          return true;
+        }
+
+        function registrarSaida(endereco) {
+          if (!endereco) {
+            exibirFeedback("error", "Selecione um endereço para registrar a saída (picking).");
+            return false;
+          }
+
+          var posicao = estado.mapaPorEndereco[endereco];
+          if (!posicao) {
+            exibirFeedback("error", "Endereço não encontrado: " + endereco + ".");
+            return false;
+          }
+
+          /* Tratamento explícito para posição já livre ou indisponível */
+          if (posicao.status === "livre") {
+            exibirFeedback(
+              "error",
+              "A posição " +
+                endereco +
+                " já está livre e não possui mercadoria para retirada."
+            );
+            return false;
+          }
+
+          if (posicao.status === "indisponivel") {
+            exibirFeedback(
+              "error",
+              "A posição " +
+                endereco +
+                " está Indisponível (sem mercadoria alocada para picking)."
+            );
+            return false;
+          }
+
+          var skuRetirado = posicao.sku;
+          var produtoRetirado = posicao.produto;
+          var qtdRetirada = posicao.quantidade;
+
+          posicao.status = "livre";
+          posicao.sku = "";
+          posicao.produto = "";
+          posicao.quantidade = 0;
+          posicao.atualizadoEm = formatarDataHoraAgora();
+
+          estado.posicaoSelecionada = endereco;
+          estado.editandoPosicao = false;
+          salvarNoLocalStorage();
+          atualizarInterfaceCompleta();
+
+          exibirFeedback(
+            "success",
+            "Saída (picking) concluída: " +
+              qtdRetirada +
+              " un. de " +
+              skuRetirado +
+              " (" +
+              produtoRetirado +
+              ") retiradas de " +
+              endereco +
+              ". Posição liberada."
+          );
+          return true;
+        }
+
+        function alternarDisponibilidade(endereco, novoStatus) {
+          var posicao = estado.mapaPorEndereco[endereco];
+          if (!posicao) return;
+
+          if (posicao.status === "ocupado") {
+            exibirFeedback(
+              "error",
+              "A posição " +
+                endereco +
+                " está ocupada. Realize a saída (picking) antes de bloqueá-la."
+            );
+            return;
+          }
+
+          if (novoStatus !== "livre" && novoStatus !== "indisponivel") return;
+          if (posicao.status === novoStatus) return;
+
+          posicao.status = novoStatus;
+          posicao.atualizadoEm = formatarDataHoraAgora();
+
+          salvarNoLocalStorage();
+          atualizarInterfaceCompleta();
+
+          if (novoStatus === "indisponivel") {
+            exibirFeedback(
+              "info",
+              "Posição " + endereco + " marcada como Indisponível para armazenagem."
+            );
+          } else {
+            exibirFeedback(
+              "success",
+              "Posição " + endereco + " restaurada para o status Livre."
+            );
+          }
+        }
+
+        function restaurarArmazemVazio() {
+          estado.posicoes = gerarPosicoesVazias();
+          reconstruirIndice();
+          estado.posicaoSelecionada = null;
+          estado.editandoPosicao = false;
+          estado.termoBusca = "";
+          el.inputBusca.value = "";
+          salvarNoLocalStorage();
+          atualizarInterfaceCompleta();
+          exibirFeedback(
+            "success",
+            "Armazém restaurado com sucesso: todas as 150 posições estão livres."
+          );
+        }
+
+        /* -----------------------------------------------------------------
+           6. RENDERIZAÇÃO DOS INDICADORES, SELETORES, BUSCA, INSPETOR E MAPA
+           ----------------------------------------------------------------- */
+        function atualizarIndicadores() {
+          var livres = 0;
+          var ocupadas = 0;
+          var indisponiveis = 0;
+
+          estado.posicoes.forEach(function (pos) {
+            if (pos.status === "livre") livres += 1;
+            else if (pos.status === "ocupado") ocupadas += 1;
+            else if (pos.status === "indisponivel") indisponiveis += 1;
+          });
+
+          var total = estado.posicoes.length;
+          var taxa = total > 0 ? (ocupadas / total) * 100 : 0;
+
+          el.kpiOcupacao.textContent = taxa.toFixed(1).replace(".", ",") + "%";
+          el.kpiOcupacaoBarra.style.width = taxa.toFixed(2) + "%";
+          el.kpiOcupacaoDetalhe.textContent =
+            ocupadas + " de " + total + " posições ocupadas";
+
+          el.kpiLivres.textContent = String(livres);
+          el.kpiOcupadas.textContent = String(ocupadas);
+          el.kpiIndisponiveis.textContent = String(indisponiveis);
+        }
+
+        function atualizarSeletoresDeEndereco() {
+          var valorDestinoAnterior = el.selectDestino.value;
+          var valorPickingAnterior = el.selectPicking.value;
+
+          /* Seletor de Putaway: apenas posições LIVRES */
+          el.selectDestino.innerHTML = "";
+          var posicoesLivres = estado.posicoes.filter(function (p) {
+            return p.status === "livre";
+          });
+
+          if (posicoesLivres.length === 0) {
+            var optVazio = document.createElement("option");
+            optVazio.value = "";
+            optVazio.textContent = "Nenhuma posição livre disponível";
+            el.selectDestino.appendChild(optVazio);
+          } else {
+            posicoesLivres.forEach(function (pos) {
+              var opt = document.createElement("option");
+              opt.value = pos.endereco;
+              opt.textContent = pos.endereco;
+              el.selectDestino.appendChild(opt);
+            });
+
+            if (
+              estado.posicaoSelecionada &&
+              estado.mapaPorEndereco[estado.posicaoSelecionada] &&
+              estado.mapaPorEndereco[estado.posicaoSelecionada].status === "livre"
+            ) {
+              el.selectDestino.value = estado.posicaoSelecionada;
+            } else if (
+              valorDestinoAnterior &&
+              estado.mapaPorEndereco[valorDestinoAnterior] &&
+              estado.mapaPorEndereco[valorDestinoAnterior].status === "livre"
+            ) {
+              el.selectDestino.value = valorDestinoAnterior;
+            }
+          }
+
+          /* Seletor de Picking: agrupado por Ocupadas primeiro e demais posições depois */
+          el.selectPicking.innerHTML = "";
+          var ocupadas = estado.posicoes.filter(function (p) {
+            return p.status === "ocupado";
+          });
+          var naoOcupadas = estado.posicoes.filter(function (p) {
+            return p.status !== "ocupado";
+          });
+
+          var grupoOcupadas = document.createElement("optgroup");
+          grupoOcupadas.label = "Posições Ocupadas (" + ocupadas.length + ")";
+          if (ocupadas.length === 0) {
+            var optSemCarga = document.createElement("option");
+            optSemCarga.value = "";
+            optSemCarga.textContent = "Nenhuma posição ocupada no momento";
+            optSemCarga.disabled = true;
+            grupoOcupadas.appendChild(optSemCarga);
+          } else {
+            ocupadas.forEach(function (pos) {
+              var opt = document.createElement("option");
+              opt.value = pos.endereco;
+              opt.textContent = pos.endereco + " · " + pos.sku + " (" + pos.quantidade + " un.)";
+              grupoOcupadas.appendChild(opt);
+            });
+          }
+          el.selectPicking.appendChild(grupoOcupadas);
+
+          var grupoOutras = document.createElement("optgroup");
+          grupoOutras.label = "Livres ou Indisponíveis (" + naoOcupadas.length + ")";
+          naoOcupadas.forEach(function (pos) {
+            var opt = document.createElement("option");
+            opt.value = pos.endereco;
+            opt.textContent = pos.endereco + " [" + STATUS_ROTULO[pos.status] + "]";
+            grupoOutras.appendChild(opt);
+          });
+          el.selectPicking.appendChild(grupoOutras);
+
+          if (estado.posicaoSelecionada && estado.mapaPorEndereco[estado.posicaoSelecionada]) {
+            el.selectPicking.value = estado.posicaoSelecionada;
+          } else if (valorPickingAnterior && estado.mapaPorEndereco[valorPickingAnterior]) {
+            el.selectPicking.value = valorPickingAnterior;
+          } else if (ocupadas.length > 0) {
+            el.selectPicking.value = ocupadas[0].endereco;
+          } else if (naoOcupadas.length > 0) {
+            el.selectPicking.value = naoOcupadas[0].endereco;
+          }
+
+          atualizarPreviewPicking();
+        }
+
+        function atualizarPreviewPicking() {
+          var endereco = el.selectPicking.value;
+          var pos = estado.mapaPorEndereco[endereco];
+
+          el.pickingPreview.innerHTML = "";
+          if (!pos) {
+            el.pickingPreview.className = "empty-state";
+            el.pickingPreview.textContent =
+              "Selecione um endereço para visualizar os dados da carga antes da baixa.";
+            return;
+          }
+
+          if (pos.status === "ocupado") {
+            el.pickingPreview.className = "inspector-details";
+            el.pickingPreview.innerHTML = "";
+
+            var linhas = [
+              ["Endereço", pos.endereco],
+              ["Código / SKU", pos.sku],
+              ["Produto", pos.produto],
+              ["Quantidade", pos.quantidade + " un."],
+            ];
+            linhas.forEach(function (par) {
+              var row = document.createElement("div");
+              row.className = "inspector-row";
+              var lbl = document.createElement("span");
+              lbl.className = "inspector-row-label";
+              lbl.textContent = par[0];
+              var val = document.createElement("span");
+              val.className = "inspector-row-val";
+              val.textContent = par[1];
+              row.appendChild(lbl);
+              row.appendChild(val);
+              el.pickingPreview.appendChild(row);
+            });
+          } else {
+            el.pickingPreview.className = "empty-state";
+            el.pickingPreview.textContent =
+              "Posição " +
+              pos.endereco +
+              " está com status " +
+              STATUS_ROTULO[pos.status] +
+              " (sem mercadoria para retirada).";
+          }
+        }
+
+        function atualizarInspetor() {
+          var container = el.inspectorConteudo;
+          container.innerHTML = "";
+
+          if (!estado.posicaoSelecionada || !estado.mapaPorEndereco[estado.posicaoSelecionada]) {
+            var vazio = document.createElement("p");
+            vazio.className = "inspector-empty";
+            vazio.textContent =
+              "Clique em qualquer célula do mapa do armazém para ver os detalhes e alterar o status entre Livre e Indisponível.";
+            container.appendChild(vazio);
+            return;
+          }
+
+          var pos = estado.mapaPorEndereco[estado.posicaoSelecionada];
+
+          var titulo = document.createElement("p");
+          titulo.className = "inspector-address";
+          titulo.textContent = pos.endereco;
+          container.appendChild(titulo);
+
+          var meta = document.createElement("div");
+          meta.className = "inspector-meta";
+          meta.textContent =
+            "Status atual: " +
+            STATUS_ROTULO[pos.status] +
+            (pos.atualizadoEm ? " · Atualizado em " + pos.atualizadoEm : "");
+          container.appendChild(meta);
+
+          var detalhes = document.createElement("div");
+          detalhes.className = "inspector-details";
+
+          var pares = [
+            ["Rua", pos.rua],
+            ["Módulo", pos.modulo],
+            ["Nível", pos.nivel + (pos.nivel === "NIVEL-1" ? " (Piso)" : pos.nivel === "NIVEL-5" ? " (Topo)" : "")],
+          ];
+
+          if (pos.status === "ocupado") {
+            pares.push(["SKU", pos.sku]);
+            pares.push(["Produto", pos.produto]);
+            pares.push(["Quantidade", pos.quantidade + " un."]);
+          }
+
+          pares.forEach(function (par) {
+            var row = document.createElement("div");
+            row.className = "inspector-row";
+            var lbl = document.createElement("span");
+            lbl.className = "inspector-row-label";
+            lbl.textContent = par[0];
+            var val = document.createElement("span");
+            val.className = "inspector-row-val";
+            val.textContent = par[1];
+            row.appendChild(lbl);
+            row.appendChild(val);
+            detalhes.appendChild(row);
+          });
+
+          container.appendChild(detalhes);
+
+          var acoes = document.createElement("div");
+          acoes.className = "inspector-actions";
+
+          if (pos.status === "livre") {
+            var btnUsar = document.createElement("button");
+            btnUsar.type = "button";
+            btnUsar.className = "btn btn-primary btn-sm";
+            btnUsar.textContent = "Usar no Recebimento";
+            btnUsar.addEventListener("click", function () {
+              ativarAba("putaway");
+              el.selectDestino.value = pos.endereco;
+              el.inputSku.focus();
+            });
+
+            var btnBloquear = document.createElement("button");
+            btnBloquear.type = "button";
+            btnBloquear.className = "btn btn-danger-outline btn-sm";
+            btnBloquear.textContent = "Marcar Indisponível";
+            btnBloquear.addEventListener("click", function () {
+              alternarDisponibilidade(pos.endereco, "indisponivel");
+            });
+
+            acoes.appendChild(btnUsar);
+            acoes.appendChild(btnBloquear);
+          } else if (pos.status === "indisponivel") {
+            var btnLiberar = document.createElement("button");
+            btnLiberar.type = "button";
+            btnLiberar.className = "btn btn-secondary btn-sm";
+            btnLiberar.textContent = "Tornar Livre";
+            btnLiberar.addEventListener("click", function () {
+              alternarDisponibilidade(pos.endereco, "livre");
+            });
+            acoes.appendChild(btnLiberar);
+          } else if (pos.status === "ocupado") {
+            if (estado.editandoPosicao) {
+              var formEdit = document.createElement("form");
+              formEdit.className = "inline-edit-form";
+              formEdit.noValidate = true;
+
+              var gSku = document.createElement("div");
+              gSku.className = "form-group";
+              var lSku = document.createElement("label");
+              lSku.className = "form-label";
+              lSku.setAttribute("for", "edit-pos-sku");
+              lSku.textContent = "Código / SKU";
+              var iSku = document.createElement("input");
+              iSku.type = "text";
+              iSku.id = "edit-pos-sku";
+              iSku.className = "form-input mono";
+              iSku.value = pos.sku;
+              gSku.appendChild(lSku);
+              gSku.appendChild(iSku);
+
+              var gNome = document.createElement("div");
+              gNome.className = "form-group";
+              var lNome = document.createElement("label");
+              lNome.className = "form-label";
+              lNome.setAttribute("for", "edit-pos-nome");
+              lNome.textContent = "Nome do produto";
+              var iNome = document.createElement("input");
+              iNome.type = "text";
+              iNome.id = "edit-pos-nome";
+              iNome.className = "form-input";
+              iNome.value = pos.produto;
+              gNome.appendChild(lNome);
+              gNome.appendChild(iNome);
+
+              var gQtd = document.createElement("div");
+              gQtd.className = "form-group";
+              var lQtd = document.createElement("label");
+              lQtd.className = "form-label";
+              lQtd.setAttribute("for", "edit-pos-qtd");
+              lQtd.textContent = "Quantidade";
+              var iQtd = document.createElement("input");
+              iQtd.type = "number";
+              iQtd.id = "edit-pos-qtd";
+              iQtd.className = "form-input tabular";
+              iQtd.min = "1";
+              iQtd.step = "1";
+              iQtd.value = String(pos.quantidade);
+              gQtd.appendChild(lQtd);
+              gQtd.appendChild(iQtd);
+
+              var editBtns = document.createElement("div");
+              editBtns.className = "inspector-actions";
+
+              var btnSalvarEdit = document.createElement("button");
+              btnSalvarEdit.type = "submit";
+              btnSalvarEdit.className = "btn btn-primary btn-sm";
+              btnSalvarEdit.textContent = "Salvar Alteração";
+
+              var btnCancelarEdit = document.createElement("button");
+              btnCancelarEdit.type = "button";
+              btnCancelarEdit.className = "btn btn-secondary btn-sm";
+              btnCancelarEdit.textContent = "Cancelar";
+              btnCancelarEdit.addEventListener("click", function () {
+                estado.editandoPosicao = false;
+                atualizarInspetor();
+              });
+
+              editBtns.appendChild(btnSalvarEdit);
+              editBtns.appendChild(btnCancelarEdit);
+
+              formEdit.appendChild(gSku);
+              formEdit.appendChild(gNome);
+              formEdit.appendChild(gQtd);
+              formEdit.appendChild(editBtns);
+
+              formEdit.addEventListener("submit", function (evento) {
+                evento.preventDefault();
+                editarPosicaoOcupada(pos.endereco, iSku.value, iNome.value, iQtd.value);
+              });
+
+              container.appendChild(formEdit);
+              return;
+            }
+
+            var btnEditarPos = document.createElement("button");
+            btnEditarPos.type = "button";
+            btnEditarPos.className = "btn btn-secondary btn-sm";
+            btnEditarPos.textContent = "Editar Produto / Qtd.";
+            btnEditarPos.addEventListener("click", function () {
+              estado.editandoPosicao = true;
+              atualizarInspetor();
+            });
+
+            var btnPicking = document.createElement("button");
+            btnPicking.type = "button";
+            btnPicking.className = "btn btn-primary btn-sm";
+            btnPicking.textContent = "Registrar Saída (Picking)";
+            btnPicking.addEventListener("click", function () {
+              registrarSaida(pos.endereco);
+            });
+
+            acoes.appendChild(btnEditarPos);
+            acoes.appendChild(btnPicking);
+          }
+
+          container.appendChild(acoes);
+        }
+
+        function atualizarCatalogoProdutos() {
+          el.catalogoContador.textContent =
+            estado.produtos.length + (estado.produtos.length === 1 ? " item" : " itens");
+
+          var valorSelecionado = el.selectProdutoSalvo.value;
+          el.selectProdutoSalvo.innerHTML = "";
+          var optPadrao = document.createElement("option");
+          optPadrao.value = "";
+          optPadrao.textContent =
+            estado.produtos.length === 0
+              ? "Nenhum produto salvo ainda"
+              : "Escolher produto salvo (" + estado.produtos.length + ")";
+          el.selectProdutoSalvo.appendChild(optPadrao);
+
+          estado.produtos.forEach(function (prod) {
+            var opt = document.createElement("option");
+            opt.value = prod.id;
+            opt.textContent =
+              prod.sku + " · " + prod.nome + (prod.unidade ? " (" + prod.unidade + ")" : "");
+            el.selectProdutoSalvo.appendChild(opt);
+          });
+
+          if (
+            valorSelecionado &&
+            estado.produtos.some(function (p) {
+              return p.id === valorSelecionado;
+            })
+          ) {
+            el.selectProdutoSalvo.value = valorSelecionado;
+          }
+
+          el.listaProdutosSalvos.innerHTML = "";
+          if (estado.produtos.length === 0) {
+            var vazio = document.createElement("div");
+            vazio.className = "empty-state";
+            vazio.textContent =
+              "Nenhum produto salvo no catálogo. Cadastre acima ou marque a opção ao registrar uma entrada.";
+            el.listaProdutosSalvos.appendChild(vazio);
+            return;
+          }
+
+          estado.produtos.forEach(function (prod) {
+            var card = document.createElement("div");
+            card.className = "search-result-item";
+
+            var topo = document.createElement("div");
+            topo.className = "search-result-top";
+            var skuEl = document.createElement("span");
+            skuEl.className = "search-result-sku";
+            skuEl.textContent = prod.sku;
+            var unEl = document.createElement("span");
+            unEl.className = "capacity-meta";
+            unEl.textContent = prod.unidade || "Sem unidade";
+            topo.appendChild(skuEl);
+            topo.appendChild(unEl);
+
+            var nomeEl = document.createElement("div");
+            nomeEl.className = "search-result-name";
+            nomeEl.textContent = prod.nome;
+
+            var acoes = document.createElement("div");
+            acoes.className = "search-result-actions";
+
+            var btnUsar = document.createElement("button");
+            btnUsar.type = "button";
+            btnUsar.className = "btn btn-primary btn-sm";
+            btnUsar.textContent = "Usar na Entrada";
+            btnUsar.addEventListener("click", function () {
+              ativarAba("putaway");
+              el.selectProdutoSalvo.value = prod.id;
+              el.inputSku.value = prod.sku;
+              el.inputProduto.value = prod.nome;
+              el.inputQuantidade.focus();
+            });
+
+            var btnEditar = document.createElement("button");
+            btnEditar.type = "button";
+            btnEditar.className = "btn btn-secondary btn-sm";
+            btnEditar.textContent = "Editar";
+            btnEditar.addEventListener("click", function () {
+              iniciarEdicaoProdutoCatalogo(prod.id);
+            });
+
+            var btnExcluir = document.createElement("button");
+            btnExcluir.type = "button";
+            btnExcluir.className = "btn btn-danger-outline btn-sm";
+            btnExcluir.textContent = "Excluir";
+            btnExcluir.addEventListener("click", function () {
+              excluirProdutoCatalogo(prod.id);
+            });
+
+            acoes.appendChild(btnUsar);
+            acoes.appendChild(btnEditar);
+            acoes.appendChild(btnExcluir);
+
+            card.appendChild(topo);
+            card.appendChild(nomeEl);
+            card.appendChild(acoes);
+            el.listaProdutosSalvos.appendChild(card);
+          });
+        }
+
+        function atualizarBusca() {
+          var termo = estado.termoBusca.trim().toLowerCase();
+          el.resultadosBusca.innerHTML = "";
+          estado.resultadosBuscaEnderecos.clear();
+
+          if (!termo) {
+            var ocupadasTotal = estado.posicoes.filter(function (p) {
+              return p.status === "ocupado";
+            }).length;
+
+            var info = document.createElement("div");
+            info.className = "empty-state";
+            info.textContent =
+              ocupadasTotal === 0
+                ? "O armazém está vazio no momento. Cadastre produtos na aba Recebimento para consultá-los."
+                : "Digite um código SKU ou nome de produto acima para localizar os endereços armazenados (" +
+                  ocupadasTotal +
+                  " posições ocupadas).";
+            el.resultadosBusca.appendChild(info);
+            return;
+          }
+
+          var encontrados = estado.posicoes.filter(function (p) {
+            if (p.status !== "ocupado") return false;
+            return (
+              p.sku.toLowerCase().indexOf(termo) !== -1 ||
+              p.produto.toLowerCase().indexOf(termo) !== -1
+            );
+          });
+
+          if (encontrados.length === 0) {
+            var nenhum = document.createElement("div");
+            nenhum.className = "empty-state";
+            nenhum.textContent =
+              'Nenhum produto encontrado no armazém para "' + estado.termoBusca.trim() + '".';
+            el.resultadosBusca.appendChild(nenhum);
+            return;
+          }
+
+          encontrados.forEach(function (pos) {
+            estado.resultadosBuscaEnderecos.add(pos.endereco);
+
+            var card = document.createElement("div");
+            card.className = "search-result-item";
+
+            var topo = document.createElement("div");
+            topo.className = "search-result-top";
+            var skuEl = document.createElement("span");
+            skuEl.className = "search-result-sku";
+            skuEl.textContent = pos.sku;
+            var qtdEl = document.createElement("span");
+            qtdEl.className = "search-result-qty tabular";
+            qtdEl.textContent = pos.quantidade + " un.";
+            topo.appendChild(skuEl);
+            topo.appendChild(qtdEl);
+
+            var nomeEl = document.createElement("div");
+            nomeEl.className = "search-result-name";
+            nomeEl.textContent = pos.produto;
+
+            var locEl = document.createElement("div");
+            locEl.className = "search-result-loc mono";
+            locEl.textContent =
+              "Rua: " +
+              pos.rua +
+              " · Módulo: " +
+              pos.modulo +
+              " · Nível: " +
+              pos.nivel;
+
+            var acoesEl = document.createElement("div");
+            acoesEl.className = "search-result-actions";
+
+            var btnVer = document.createElement("button");
+            btnVer.type = "button";
+            btnVer.className = "btn btn-secondary btn-sm";
+            btnVer.textContent = "Ver no Mapa";
+            btnVer.addEventListener("click", function () {
+              if (estado.filtroRua !== "TODAS" && estado.filtroRua !== pos.rua) {
+                definirFiltroRua("TODAS");
+              }
+              selecionarPosicao(pos.endereco);
+              var slotEl = el.gradeRuas.querySelector(
+                '[data-endereco="' + pos.endereco + '"]'
+              );
+              if (slotEl) {
+                slotEl.scrollIntoView({ behavior: "smooth", block: "center" });
+                slotEl.focus();
+              }
+            });
+
+            var btnRetirar = document.createElement("button");
+            btnRetirar.type = "button";
+            btnRetirar.className = "btn btn-primary btn-sm";
+            btnRetirar.textContent = "Fazer Picking";
+            btnRetirar.addEventListener("click", function () {
+              ativarAba("picking");
+              el.selectPicking.value = pos.endereco;
+              atualizarPreviewPicking();
+              selecionarPosicao(pos.endereco);
+            });
+
+            acoesEl.appendChild(btnVer);
+            acoesEl.appendChild(btnRetirar);
+
+            card.appendChild(topo);
+            card.appendChild(nomeEl);
+            card.appendChild(locEl);
+            card.appendChild(acoesEl);
+            el.resultadosBusca.appendChild(card);
+          });
+        }
+
+        function renderizarMapa() {
+          el.gradeRuas.innerHTML = "";
+
+          var ruasVisiveis = RUAS.filter(function (rua) {
+            return estado.filtroRua === "TODAS" || estado.filtroRua === rua;
+          });
+
+          var totalVisivel = 0;
+
+          ruasVisiveis.forEach(function (rua) {
+            var posicoesDaRua = estado.posicoes.filter(function (p) {
+              return p.rua === rua;
+            });
+            totalVisivel += posicoesDaRua.length;
+
+            var ocupadasRua = posicoesDaRua.filter(function (p) {
+              return p.status === "ocupado";
+            }).length;
+
+            var cardRua = document.createElement("article");
+            cardRua.className = "aisle-card";
+            cardRua.setAttribute("aria-label", "Corredor " + rua);
+
+            var headerRua = document.createElement("div");
+            headerRua.className = "aisle-header";
+
+            var nomeRua = document.createElement("span");
+            nomeRua.className = "aisle-name";
+            nomeRua.textContent = rua;
+
+            var resumoRua = document.createElement("span");
+            resumoRua.className = "aisle-summary tabular";
+            resumoRua.textContent = ocupadasRua + "/25 ocupadas";
+
+            headerRua.appendChild(nomeRua);
+            headerRua.appendChild(resumoRua);
+            cardRua.appendChild(headerRua);
+
+            var scrollWrap = document.createElement("div");
+            scrollWrap.className = "rack-scroll";
+
+            var gridModulos = document.createElement("div");
+            gridModulos.className = "modules-grid";
+
+            MODULOS.forEach(function (modulo) {
+              var colModulo = document.createElement("div");
+              colModulo.className = "module-col";
+
+              var tituloModulo = document.createElement("div");
+              tituloModulo.className = "module-title";
+              tituloModulo.textContent = modulo;
+              colModulo.appendChild(tituloModulo);
+
+              NIVEIS_VISUAIS.forEach(function (nivel) {
+                var endereco = formatarEndereco(rua, modulo, nivel);
+                var pos = estado.mapaPorEndereco[endereco];
+
+                var btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "slot-btn status-" + pos.status;
+                btn.setAttribute("data-endereco", endereco);
+
+                if (estado.posicaoSelecionada === endereco) {
+                  btn.classList.add("is-selected");
+                }
+
+                if (
+                  estado.abaAtiva === "busca" &&
+                  estado.resultadosBuscaEnderecos.has(endereco)
+                ) {
+                  btn.classList.add("is-search-hit");
+                }
+
+                if (
+                  estado.filtroStatus !== "TODOS" &&
+                  pos.status !== estado.filtroStatus
+                ) {
+                  btn.classList.add("is-dimmed");
+                }
+
+                var nivelCurto = nivel.replace("NIVEL-", "N");
+                var codigoSimbolo =
+                  pos.status === "livre" ? "L" : pos.status === "ocupado" ? "O" : "X";
+
+                var topRow = document.createElement("span");
+                topRow.className = "slot-top";
+
+                var nivelSpan = document.createElement("span");
+                nivelSpan.textContent = nivelCurto;
+                var simSpan = document.createElement("span");
+                simSpan.textContent = codigoSimbolo;
+
+                topRow.appendChild(nivelSpan);
+                topRow.appendChild(simSpan);
+
+                var bottomRow = document.createElement("span");
+                bottomRow.className = "slot-bottom";
+                if (pos.status === "ocupado") {
+                  bottomRow.textContent = pos.sku;
+                } else if (pos.status === "indisponivel") {
+                  bottomRow.textContent = "Indisp.";
+                } else {
+                  bottomRow.textContent = "Livre";
+                }
+
+                btn.appendChild(topRow);
+                btn.appendChild(bottomRow);
+
+                var tituloTooltip =
+                  endereco +
+                  " — " +
+                  STATUS_ROTULO[pos.status] +
+                  (pos.status === "ocupado"
+                    ? " (" + pos.sku + " · " + pos.produto + " · " + pos.quantidade + " un.)"
+                    : "");
+                btn.title = tituloTooltip;
+                btn.setAttribute("aria-label", tituloTooltip);
+                btn.setAttribute("aria-pressed", String(estado.posicaoSelecionada === endereco));
+
+                btn.addEventListener("click", function () {
+                  selecionarPosicao(endereco);
+                });
+
+                colModulo.appendChild(btn);
+              });
+
+              gridModulos.appendChild(colModulo);
+            });
+
+            scrollWrap.appendChild(gridModulos);
+            cardRua.appendChild(scrollWrap);
+
+            var pisoLabel = document.createElement("div");
+            pisoLabel.className = "rack-floor-label";
+            pisoLabel.textContent = "Piso (N1 = base · N5 = topo)";
+            cardRua.appendChild(pisoLabel);
+
+            el.gradeRuas.appendChild(cardRua);
+          });
+
+          el.mapaContadorVisivel.textContent =
+            "Exibindo " + totalVisivel + " de " + estado.posicoes.length + " posições";
+        }
+
+        function atualizarInterfaceCompleta() {
+          atualizarIndicadores();
+          atualizarSeletoresDeEndereco();
+          atualizarCatalogoProdutos();
+          atualizarInspetor();
+          atualizarBusca();
+          renderizarMapa();
+        }
+
+        /* -----------------------------------------------------------------
+           7. CONTROLES DE NAVEGAÇÃO, FILTROS E MODAL
+           ----------------------------------------------------------------- */
+        function ativarAba(nomeAba) {
+          estado.abaAtiva = nomeAba;
+          el.tabBtns.forEach(function (btn) {
+            var ativo = btn.getAttribute("data-tab") === nomeAba;
+            btn.setAttribute("aria-selected", String(ativo));
+          });
+
+          Object.keys(el.tabPanels).forEach(function (chave) {
+            el.tabPanels[chave].hidden = chave !== nomeAba;
+          });
+
+          renderizarMapa();
+        }
+
+        function selecionarPosicao(endereco) {
+          if (estado.posicaoSelecionada !== endereco) {
+            estado.editandoPosicao = false;
+          }
+          estado.posicaoSelecionada = endereco;
+          var pos = estado.mapaPorEndereco[endereco];
+
+          if (pos) {
+            if (pos.status === "livre" && estado.abaAtiva === "putaway") {
+              el.selectDestino.value = endereco;
+            }
+            if (estado.abaAtiva === "picking") {
+              el.selectPicking.value = endereco;
+              atualizarPreviewPicking();
+            }
+          }
+
+          atualizarInspetor();
+          renderizarMapa();
+        }
+
+        function definirFiltroRua(rua) {
+          estado.filtroRua = rua;
+          el.botoesFiltroRua.forEach(function (btn) {
+            btn.setAttribute("aria-pressed", String(btn.getAttribute("data-filter-rua") === rua));
+          });
+          renderizarMapa();
+        }
+
+        function definirFiltroStatus(status) {
+          estado.filtroStatus = status;
+          el.botoesFiltroStatus.forEach(function (btn) {
+            btn.setAttribute(
+              "aria-pressed",
+              String(btn.getAttribute("data-filter-status") === status)
+            );
+          });
+          renderizarMapa();
+        }
+
+        function abrirModalReset() {
+          el.modalReset.hidden = false;
+          el.btnCancelarReset.focus();
+        }
+
+        function fecharModalReset() {
+          el.modalReset.hidden = true;
+          el.btnAbrirReset.focus();
+        }
+
+        /* -----------------------------------------------------------------
+           8. VINCULAÇÃO DE EVENTOS E INICIALIZAÇÃO
+           ----------------------------------------------------------------- */
+        function registrarEventos() {
+          el.feedbackFechar.addEventListener("click", ocultarFeedback);
+
+          el.tabBtns.forEach(function (btn) {
+            btn.addEventListener("click", function () {
+              ativarAba(btn.getAttribute("data-tab"));
+            });
+          });
+
+          el.selectProdutoSalvo.addEventListener("change", function () {
+            var id = el.selectProdutoSalvo.value;
+            if (!id) return;
+            var prod = estado.produtos.find(function (p) {
+              return p.id === id;
+            });
+            if (prod) {
+              el.inputSku.value = prod.sku;
+              el.inputProduto.value = prod.nome;
+              el.inputQuantidade.focus();
+            }
+          });
+
+          el.formPutaway.addEventListener("submit", function (evento) {
+            evento.preventDefault();
+            var sucesso = registrarEntrada(
+              el.inputSku.value,
+              el.inputProduto.value,
+              el.inputQuantidade.value,
+              el.selectDestino.value
+            );
+            if (sucesso) {
+              var manterSalvar = el.chkSalvarCatalogo.checked;
+              el.formPutaway.reset();
+              el.chkSalvarCatalogo.checked = manterSalvar;
+              atualizarSeletoresDeEndereco();
+              el.inputSku.focus();
+            }
+          });
+
+          el.formProdutoCatalogo.addEventListener("submit", function (evento) {
+            evento.preventDefault();
+            var salvo = salvarProdutoCatalogo(
+              el.catInputSku.value,
+              el.catInputNome.value,
+              el.catInputUnidade.value
+            );
+            if (salvo) {
+              cancelarEdicaoProdutoCatalogo();
+            }
+          });
+
+          el.btnCancelarEdicaoProduto.addEventListener("click", cancelarEdicaoProdutoCatalogo);
+
+          el.selectPicking.addEventListener("change", atualizarPreviewPicking);
+
+          el.formPicking.addEventListener("submit", function (evento) {
+            evento.preventDefault();
+            registrarSaida(el.selectPicking.value);
+          });
+
+          el.formBusca.addEventListener("submit", function (evento) {
+            evento.preventDefault();
+            estado.termoBusca = el.inputBusca.value;
+            atualizarBusca();
+            renderizarMapa();
+          });
+
+          el.inputBusca.addEventListener("input", function () {
+            estado.termoBusca = el.inputBusca.value;
+            atualizarBusca();
+            renderizarMapa();
+          });
+
+          el.botoesFiltroRua.forEach(function (btn) {
+            btn.addEventListener("click", function () {
+              definirFiltroRua(btn.getAttribute("data-filter-rua"));
+            });
+          });
+
+          el.botoesFiltroStatus.forEach(function (btn) {
+            btn.addEventListener("click", function () {
+              definirFiltroStatus(btn.getAttribute("data-filter-status"));
+            });
+          });
+
+          el.btnAbrirReset.addEventListener("click", abrirModalReset);
+          el.btnCancelarReset.addEventListener("click", fecharModalReset);
+          el.btnConfirmarReset.addEventListener("click", function () {
+            fecharModalReset();
+            restaurarArmazemVazio();
+          });
+
+          el.modalReset.addEventListener("click", function (evento) {
+            if (evento.target === el.modalReset) {
+              fecharModalReset();
+            }
+          });
+
+          document.addEventListener("keydown", function (evento) {
+            if (evento.key === "Escape" && !el.modalReset.hidden) {
+              fecharModalReset();
+            }
+          });
+        }
+
+        function inicializar() {
+          carregarDoLocalStorage();
+          carregarProdutosDoLocalStorage();
+          registrarEventos();
+          atualizarInterfaceCompleta();
+        }
+
+        inicializar();
+      })();
+    </script>
+  </body>
+</html>

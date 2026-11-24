@@ -1,0 +1,6 @@
+{
+  "name": "WMS Simplificado — Gestão de Armazém",
+  "description": "Protótipo acadêmico de Sistema de Gestão de Armazém (WMS) com mapa visual de 150 posições porta-paletes, recebimento (putaway), saída (picking), busca por SKU e persistência em localStorage.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
